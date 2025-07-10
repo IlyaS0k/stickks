@@ -1,3 +1,9 @@
+# StickKs
+
+A Telegram client for feature development, written in Kotlin.  
+This application provides a Kotlin DSL framework for building Telegram features,  
+enabling type-safe and declarative client-side Telegram logic.
+
 ## 🚀 Quick Start with Docker Compose
 
 Make sure you have Docker and Docker Compose installed on your system.
