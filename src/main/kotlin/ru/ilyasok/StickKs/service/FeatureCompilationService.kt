@@ -125,12 +125,13 @@ class FeatureCompilationService(
                 }
                 return CompilationResult(success = false, error = compilationError)
             }
-            val classLoader = URLClassLoader(arrayOf(compilationOutputDir.toURI().toURL()))
-            val clazz = classLoader.loadClass(classToLoad)
-            val method = clazz.getDeclaredMethod(COMPILED_METHOD_NAME)
-            val feature = method.invoke(null) as FeatureBlock
-            logger.debug("Successfully compiled feature(id = {})\n: {}", id, featureCode)
-            return CompilationResult(success = true, featureBlock = feature)
+            URLClassLoader(arrayOf(compilationOutputDir.toURI().toURL())).use { classLoader ->
+                val clazz = classLoader.loadClass(classToLoad)
+                val method = clazz.getDeclaredMethod(COMPILED_METHOD_NAME)
+                val feature = method.invoke(null) as FeatureBlock
+                logger.debug("Successfully compiled feature(id = {})\n: {}", id, featureCode)
+                return CompilationResult(success = true, featureBlock = feature)
+            }
         } catch (error: InvocationTargetException) {
             val e = error.targetException
             logger.info("Incorrect DSL syntax(feature id = $id)\n: $featureCode", e)
