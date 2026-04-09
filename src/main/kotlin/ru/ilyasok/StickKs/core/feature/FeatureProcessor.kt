@@ -22,6 +22,7 @@ import ru.ilyasok.StickKs.service.FeatureService
 import ru.ilyasok.StickKs.service.NotificationService
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.milliseconds
 
 @Component
 class FeatureProcessor(
@@ -37,7 +38,7 @@ class FeatureProcessor(
 
         private const val WAITING_FOR_JOB = 15_000L
 
-        private val processingId = 0L
+        private var processingId = 0L
     }
 
     private lateinit var loopJob: Job
@@ -71,17 +72,17 @@ class FeatureProcessor(
         }
     }
 
-    suspend fun process(eventContext: EventContext) {
+    suspend fun process(eventContext: EventContext) = coroutineScope {
         val features = featureManager.getFeatures()
         for (f in features) {
-            CoroutineScope(Dispatchers.Default).launch(CoroutineName("Feature${f.id}ProcessCoro")) {
+            launch(CoroutineName("Feature${f.id}ProcessCoro")) {
                 var updatedMeta: FeatureMeta? = null
                 f.process {
                     logger.info("Start process feature ${f.idName()}")
                     val meta = featureService.getMeta(f.id)
                     val feature = f.copy(meta = meta)
                     if (!feature.isEnabled() || !feature.control()) return@process
-                    withTimeout(WAITING_FOR_JOB) {
+                    withTimeout(WAITING_FOR_JOB.milliseconds) {
                         try {
                             feature.takeIf { feature -> feature.checkEvent(eventContext) }
                                 ?.takeIf { feature -> feature.checkCondition(eventContext) }
@@ -123,7 +124,7 @@ class FeatureProcessor(
             }
         }
 
-        logger.debug("Processing ${processingId.inc()} finished")
+        logger.debug("Processing {} finished", ++processingId)
     }
 
     private fun <T : EventContext> Feature.checkEvent(eventContext: T): Boolean {
