@@ -1,19 +1,19 @@
 package ru.ilyasok.StickKs.core.feature
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withTimeout
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import ru.ilyasok.StickKs.model.AvailabilityStatus
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 
@@ -25,12 +25,10 @@ class FeatureUpdatesQueue {
 
     private val updates: Channel<FeatureUpdateInfo> = Channel(Channel.UNLIMITED)
 
-    private val status = AtomicReference(AvailabilityStatus.DISABLED)
-
-    private val statusChangedEvent = CompletableDeferred<Unit>()
+    private val status = MutableStateFlow(AvailabilityStatus.DISABLED)
 
     suspend fun add(id: UUID, reqId: UUID?, updateType: FeatureUpdateType) {
-        if (status.get() == AvailabilityStatus.ENABLED) {
+        if (status.value == AvailabilityStatus.ENABLED) {
             val fui = FeatureUpdateInfo(id, reqId, updateType)
             updates.send(fui)
             logger.info("Added new update: $fui")
@@ -48,12 +46,10 @@ class FeatureUpdatesQueue {
             try {
                 logger.info("Disabling updates after timeout $timeout")
                 withTimeout(timeout) {
-                    while (status.get() == AvailabilityStatus.DISABLED) {
-                        statusChangedEvent.await()
-                    }
+                    status.first { it != AvailabilityStatus.DISABLED }
                 }
             } catch (_: TimeoutCancellationException) {
-                status.set(AvailabilityStatus.DISABLED)
+                status.value = AvailabilityStatus.DISABLED
                 logger.debug("Disabled updates queue job timeout exceeded: updates queue is disabled")
             } catch (_: CancellationException) {
                 logger.debug("Cancelled disable updates queue job: updates queue is enabled")
@@ -62,8 +58,7 @@ class FeatureUpdatesQueue {
     }
 
     suspend fun enable() {
-        status.set(AvailabilityStatus.ENABLED)
-        statusChangedEvent.complete(Unit)
+        status.value = AvailabilityStatus.ENABLED
     }
 
 }

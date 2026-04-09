@@ -1,12 +1,13 @@
 package ru.ilyasok.StickKs.core.feature
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -20,7 +21,7 @@ import ru.ilyasok.StickKs.model.NotificationType
 import ru.ilyasok.StickKs.service.FeatureService
 import ru.ilyasok.StickKs.service.NotificationService
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
+
 
 @Component
 class FeatureManager(
@@ -29,8 +30,7 @@ class FeatureManager(
     internal val notificationService: NotificationService,
     internal val activatedFeaturesManager: ActivatedFeaturesManager
 ) {
-    internal val status = AtomicReference(AvailabilityStatus.DISABLED)
-    internal val statusChangedSignal = CompletableDeferred<Unit>()
+    internal val status = MutableStateFlow(AvailabilityStatus.DISABLED)
     internal var fetchUpdatesJob: Job? = null
     internal val fetchJobMutex = Mutex()
     internal val features: MutableList<Feature> = mutableListOf()
@@ -45,9 +45,8 @@ class FeatureManager(
     }
 
     fun disable() {
-        if (status.get() == AvailabilityStatus.DISABLED) return
-        status.set(AvailabilityStatus.DISABLED)
-        statusChangedSignal.complete(Unit)
+        if (status.value == AvailabilityStatus.DISABLED) return
+        status.value = AvailabilityStatus.DISABLED
         runBlocking {
             fetchJobMutex.withLock {
                 withContext(Dispatchers.Default) {
@@ -59,7 +58,7 @@ class FeatureManager(
     }
 
     fun enable(refresh: Boolean = false) {
-        if (status.get() == AvailabilityStatus.ENABLED && !refresh) return
+        if (status.value == AvailabilityStatus.ENABLED && !refresh) return
         CoroutineScope(Dispatchers.Default).launch {
             featuresMutex.withLock {
                 features.clear()
@@ -80,8 +79,7 @@ class FeatureManager(
                 }
             }
         }
-        status.set(AvailabilityStatus.ENABLED)
-        statusChangedSignal.complete(Unit)
+        status.value = AvailabilityStatus.ENABLED
     }
 
     suspend fun apply(feature: Feature) = featuresMutex.withLock {
@@ -127,8 +125,6 @@ class FeatureManager(
     }
 
     private suspend fun waitWhileDisabled() {
-        while (status.get() == AvailabilityStatus.DISABLED) {
-            statusChangedSignal.await()
-        }
+        status.first { it != AvailabilityStatus.DISABLED }
     }
 }
